@@ -1,0 +1,41 @@
+{
+  "name": "newspaper",
+  "version": "1.0.0",
+  "description": "Daily tech digest: fetches top Hacker News stories and latest arXiv papers (AI/ML/Algorithms), analyzes them, and writes a rich Markdown report.",
+  "category": "productivity",
+  "keywords": ["news", "hacker news", "arxiv", "digest", "daily", "AI", "papers", "research"],
+  "handler_type": "script",
+  "command": "run.sh",
+  "args": "bash",
+  "user_invokable": true,
+  "timeout_ms": 300000,
+  "tool_schema": {
+    "type": "object",
+    "properties": {
+      "hn_top": {
+        "type": "integer",
+        "description": "Number of top HN stories to fetch (default: 20)",
+        "default": 20
+      },
+      "arxiv_count": {
+        "type": "integer",
+        "description": "Number of arXiv papers to fetch (default: 10)",
+        "default": 10
+      },
+      "sections": {
+        "type": "string",
+        "description": "Sections to include: 'hn', 'arxiv', or 'hn,arxiv' (default: both)",
+        "default": "hn,arxiv"
+      },
+      "output": {
+        "type": "string",
+        "description": "Output file path. Default: newspaper/newspaper_YYYY-MM-DD.md"
+      },
+      "no_ai": {
+        "type": "boolean",
+        "description": "If true, skip AI analysis and output raw data only",
+        "default": false
+      }
+    }
+  }
+}

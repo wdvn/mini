@@ -1,15 +1,15 @@
 services:
   newspaper-agent:
     build:
-      context: ../../
-      dockerfile: examples/newspaper/Dockerfile
+      context: .
+      dockerfile: Dockerfile
     container_name: hackernews 
     restart: unless-stopped
     env_file:
       - .env
     environment:
-      - MINI_BIN=/app/bin/mini
-      - MINI_MCP_CONFIG=/app/examples/newspaper/mcp.json
+      - MINI_BIN=/app/mini
+      - MINI_MCP_CONFIG=/app/mcp.json
       - TZ=Asia/Ho_Chi_Minh
       # Set RUN_ON_START=true để chạy 1 lần ngay khi khởi động
       # - RUN_ON_START=true

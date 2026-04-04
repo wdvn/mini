@@ -2,7 +2,7 @@
   "servers": {
     "wdvn_api": {
       "command": "python3",
-      "args": ["/app/examples/newspaper/mcp_server.py"]
+      "args": ["/app/mcp_server.py"]
     }
   }
 }

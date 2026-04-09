@@ -86,9 +86,9 @@ pub const History = struct {
     }
 
     /// Thêm phản hồi đầy đủ từ AI (có thể chứa text + tool_use).
-    /// Content blocks được copy sâu vào History.
-    pub fn addAssistantResponse(self: *History, response: *const proto.Response) !void {
-        if (response.content.items.len == 0) return;
+    /// Content blocks được copy sâu vào History. Trả về true nếu tin nhắn được thêm.
+    pub fn addAssistantResponse(self: *History, response: *const proto.Response) !bool {
+        if (response.content.items.len == 0) return false;
         const blocks = try self.alloc.alloc(proto.ContentBlock, response.content.items.len);
         for (response.content.items, 0..) |block, i| {
             blocks[i] = switch (block) {
@@ -106,6 +106,7 @@ pub const History = struct {
             };
         }
         try self.msgs.append(self.alloc, .{ .role = .assistant, .content = blocks });
+        return true;
     }
 
     /// Thêm kết quả tool execution vào lịch sử (dạng user message với tool_result blocks).
@@ -136,6 +137,14 @@ pub const History = struct {
     pub fn clear(self: *History) void {
         for (self.msgs.items) |msg| freeContentBlocks(self.alloc, msg.content);
         self.msgs.clearRetainingCapacity();
+    }
+
+    /// Xóa tin nhắn cuối cùng khỏi lịch sử.
+    pub fn popLast(self: *History) void {
+        if (self.msgs.items.len == 0) return;
+        const last = self.msgs.items[self.msgs.items.len - 1];
+        freeContentBlocks(self.alloc, last.content);
+        self.msgs.items.len -= 1;
     }
 
     /// Compact: giữ lại chỉ một nửa các tin nhắn gần nhất.

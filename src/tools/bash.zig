@@ -3,6 +3,11 @@
 //! Chạy lệnh shell qua `/bin/sh -c` và trả về stdout + stderr.
 //! Có safety check để chặn các lệnh nguy hiểm.
 //!
+//! ## Concurrent I/O
+//! Dùng thread riêng để đọc stderr song song với stdout, tránh deadlock
+//! khi child process ghi nhiều data vào cả hai pipe cùng lúc.
+//! Pipe được drain hoàn toàn (data thừa bị bỏ) để child không bị block.
+//!
 //! ## Safety blocklist
 //! Các pattern sau bị chặn vô điều kiện:
 //!   - `rm -rf /` hoặc `rm -rf ~`
@@ -16,8 +21,7 @@
 //! ```
 //!
 //! ## Giới hạn
-//!   - Output bị truncate ở 32KB
-//!   - Timeout: 30 giây
+//!   - Output bị truncate ở 128KB
 //!   - Working directory: CWD của process
 
 const std = @import("std");
@@ -43,8 +47,8 @@ const BLOCKED_PATTERNS = [_][]const u8{
     "git clean -f",
 };
 
-/// Giới hạn output (byte).
-const MAX_OUTPUT = 32 * 1024;
+/// Giới hạn output (byte). Heap-allocated, không dùng stack.
+const MAX_OUTPUT = 128 * 1024;
 
 /// Thực thi tool bash.
 /// Input: JSON string với trường "command".
@@ -66,7 +70,42 @@ pub fn executeTool(alloc: Allocator, input_json: []const u8) ![]u8 {
     return executeCommand(alloc, command);
 }
 
+// ---------------------------------------------------------------------------
+// Concurrent pipe I/O
+// ---------------------------------------------------------------------------
+
+/// Drain pipe hoàn toàn vào buffer. Giữ lại tối đa buf.len bytes đầu tiên.
+/// Phần data thừa vẫn được đọc hết để child process không bị block trên pipe.
+fn drainPipe(pipe: std.fs.File, buf: []u8) usize {
+    var stored: usize = 0;
+    while (true) {
+        if (stored < buf.len) {
+            // Còn chỗ trong buffer — đọc vào
+            const n = pipe.read(buf[stored..]) catch break;
+            if (n == 0) break;
+            stored += n;
+        } else {
+            // Buffer đầy — drain phần còn lại để tránh deadlock
+            var sink: [4096]u8 = undefined;
+            const n = pipe.read(&sink) catch break;
+            if (n == 0) break;
+        }
+    }
+    return stored;
+}
+
+/// Wrapper cho thread stderr — cùng signature để dùng với Thread.spawn.
+fn drainStderrThread(pipe: std.fs.File, buf: []u8, len_out: *usize) void {
+    len_out.* = drainPipe(pipe, buf);
+}
+
+// ---------------------------------------------------------------------------
+// Command execution
+// ---------------------------------------------------------------------------
+
 /// Chạy lệnh shell và thu thập output.
+/// Dùng thread riêng đọc stderr song song với stdout để tránh deadlock pipe.
+/// Buffer được heap-allocate (128KB mỗi stream).
 fn executeCommand(alloc: Allocator, command: []const u8) ![]u8 {
     const argv = [_][]const u8{ "/bin/sh", "-c", command };
     var child = std.process.Child.init(&argv, alloc);
@@ -75,24 +114,35 @@ fn executeCommand(alloc: Allocator, command: []const u8) ![]u8 {
 
     try child.spawn();
 
-    var stdout_buf = std.ArrayListUnmanaged(u8){};
-    var stderr_buf = std.ArrayListUnmanaged(u8){};
-    defer stdout_buf.deinit(alloc);
-    defer stderr_buf.deinit(alloc);
+    // Heap-allocate buffers
+    const stdout_buf = try alloc.alloc(u8, MAX_OUTPUT);
+    defer alloc.free(stdout_buf);
+    const stderr_buf = try alloc.alloc(u8, MAX_OUTPUT);
+    defer alloc.free(stderr_buf);
 
-    // Đọc stdout và stderr
-    var stdout_bytes: [MAX_OUTPUT]u8 = undefined;
-    var stderr_bytes: [MAX_OUTPUT]u8 = undefined;
     var stdolen: usize = 0;
     var stdelen: usize = 0;
 
-    if (child.stdout) |out| {
-        stdolen = utils.readAll(out, &stdout_bytes) catch 0;
-    }
-    if (child.stderr) |err| {
-        stdelen = utils.readAll(err, &stderr_bytes) catch 0;
+    // Spawn thread đọc stderr song song
+    const stderr_thread = if (child.stderr) |err_pipe|
+        std.Thread.spawn(.{}, drainStderrThread, .{ err_pipe, stderr_buf, &stdelen }) catch null
+    else
+        null;
+
+    // Main thread đọc stdout
+    if (child.stdout) |out_pipe| {
+        stdolen = drainPipe(out_pipe, stdout_buf);
     }
 
+    // Chờ stderr thread hoàn tất
+    if (stderr_thread) |t| {
+        t.join();
+    } else if (child.stderr) |err_pipe| {
+        // Fallback sequential nếu spawn thread thất bại
+        stdelen = drainPipe(err_pipe, stderr_buf);
+    }
+
+    // Chờ child process kết thúc (sau khi đã drain hết pipe)
     const term = child.wait() catch |e| {
         return std.fmt.allocPrint(alloc, "Lỗi wait: {s}", .{@errorName(e)});
     };
@@ -111,11 +161,11 @@ fn executeCommand(alloc: Allocator, command: []const u8) ![]u8 {
     const w = &result;
 
     if (stdolen > 0) {
-        try w.writeAll(stdout_bytes[0..@min(stdolen, MAX_OUTPUT)]);
+        try w.writeAll(stdout_buf[0..stdolen]);
     }
     if (stdelen > 0) {
         if (stdolen > 0) try w.writeByte('\n');
-        try w.writeAll(stderr_bytes[0..@min(stdelen, MAX_OUTPUT)]);
+        try w.writeAll(stderr_buf[0..stdelen]);
     }
     if (exit_code != 0 and result.list.items.len == 0) {
         try w.print("Exit code: {d}", .{exit_code});

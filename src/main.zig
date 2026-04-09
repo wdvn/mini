@@ -153,6 +153,22 @@ pub fn main() !void {
         return;
     }
 
+    // Single-shot mode from file
+    if (args.single) |prompt_file| {
+        const file = std.fs.cwd().openFile(prompt_file, .{}) catch |e| {
+            stderrPrint("Không mở được prompt file '{s}': {s}\n", .{ prompt_file, @errorName(e) });
+            std.process.exit(1);
+        };
+        defer file.close();
+        const stat = try file.stat();
+        const file_buf = try alloc.alloc(u8, @intCast(stat.size));
+        defer alloc.free(file_buf);
+        const n = try utils.readAll(file, file_buf);
+        const file_prompt = std.mem.trim(u8, file_buf[0..n], " \t\r\n");
+        try agent.processInput(file_prompt, printText);
+        return;
+    }
+
     // REPL mode
     try runRepl(alloc, &agent);
 }
@@ -247,6 +263,7 @@ fn handleSlashCommand(agent: *agent_mod.AgentLoop, input: []const u8) bool {
 
 const Args = struct {
     prompt: ?[]const u8 = null,
+    single: ?[]const u8 = null,
     system_file: ?[]const u8 = null,
     backend: ?[]const u8 = null,
     no_mcp: bool = false,
@@ -262,6 +279,9 @@ fn parseArgs(args: []const []const u8) !Args {
         if (std.mem.eql(u8, arg, "-e") or std.mem.eql(u8, arg, "--exec")) {
             i += 1;
             if (i < args.len) result.prompt = args[i];
+        } else if (std.mem.eql(u8, arg, "--single")) {
+            i += 1;
+            if (i < args.len) result.single = args[i];
         } else if (std.mem.eql(u8, arg, "--system")) {
             i += 1;
             if (i < args.len) result.system_file = args[i];

@@ -75,7 +75,8 @@ done
 DATE=$(date +%Y-%m-%d)
 OUTPUT_PATH="${OUTPUT_PATH:-$SKILL_DIR/arxiv_${DATE}.md}"
 
-read -r -d '' AGENT_PROMPT << PROMPT || true
+TMP_PROMPT=$(mktemp)
+cat << PROMPT > "$TMP_PROMPT"
 Mục tiêu của bạn hôm nay là tạo Bản tin Khoa học Máy tính (Computer Science) Mới nhất từ arXiv.
 
 **Cấu hình thực thi:**
@@ -102,7 +103,7 @@ echo ""
 export MINI_SYSTEM_FILE="$SKILL_DIR/system_prompt.md"
 export MINI_NO_HISTORY=1
 
-"$MINI_BIN" -e "$AGENT_PROMPT"
+"$MINI_BIN" --single "$TMP_PROMPT"
 
 STATUS=$?
 echo ""
@@ -114,5 +115,7 @@ if [[ $STATUS -eq 0 ]]; then
     fi
 else
     echo "[arxiv] ✗ Có lỗi xảy ra trong quá trình chạy (exit code $STATUS)." >&2
-    exit $STATUS
 fi
+
+rm -f "$TMP_PROMPT"
+exit $STATUS

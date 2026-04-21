@@ -101,6 +101,9 @@ pub const Client = struct {
         };
         defer ctx.line_buf.deinit(self.alloc);
         defer ctx.tool_calls.deinit(self.alloc);
+        defer if (ctx.text_accum_init) ctx.text_accum.deinit(self.alloc);
+        defer if (ctx.raw_accum_init) ctx.raw_accum.deinit(self.alloc);
+        errdefer ctx.response.deinit();
 
         const headers = [_][]const u8{ auth_header, "Content-Type: application/json" };
         const req_http_code = try sse.post(self.alloc, .{
@@ -117,7 +120,6 @@ pub const Client = struct {
         if (ctx.response.stop_reason == .unknown and ctx.raw_accum_init) {
             ctx.response.raw_debug_info = ctx.alloc.dupe(u8, ctx.raw_accum.items) catch null;
         }
-        if (ctx.raw_accum_init) ctx.raw_accum.deinit(self.alloc);
 
         return ctx.response;
     }
@@ -444,6 +446,5 @@ const StreamCtx = struct {
         if (self.tool_calls.items.len > 0 and self.response.stop_reason != .tool_use) {
             self.response.stop_reason = .tool_use;
         }
-        if (self.text_accum_init) self.text_accum.deinit(self.alloc);
     }
 };

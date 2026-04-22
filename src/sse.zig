@@ -72,7 +72,7 @@ pub const RequestOpts = struct {
     /// Body của POST request (JSON string).
     body: []const u8 = "",
     /// Timeout tổng (giây). Mặc định: 120.
-    timeout_secs: u32 = 120,
+    timeout_secs: u32 = 300,
 };
 
 /// Gửi HTTP POST và nhận phản hồi qua `on_chunk` callback.

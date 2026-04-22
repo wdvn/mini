@@ -38,7 +38,7 @@ const claude_mod = @import("backend/claude.zig");
 const ollama_mod = @import("backend/ollama.zig");
 
 /// Số iterations tối đa trong một lần processInput.
-const MAX_ITERATIONS = 30;
+const MAX_ITERATIONS = 100;
 /// Số lần retry tối đa khi gặp rate limit.
 const MAX_RATE_LIMIT_RETRIES = 5;
 /// Thời gian chờ ban đầu khi gặp rate limit (giây).

@@ -71,7 +71,7 @@ pub const RequestOpts = struct {
     headers: []const []const u8 = &.{},
     /// Body của POST request (JSON string).
     body: []const u8 = "",
-    /// Timeout tổng (giây). Mặc định: 120.
+    /// Timeout tổng (giây). Mặc định: 300.
     timeout_secs: u32 = 300,
 };
 

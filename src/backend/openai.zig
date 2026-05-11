@@ -110,7 +110,7 @@ pub const Client = struct {
             .url = url,
             .headers = &headers,
             .body = body,
-            .timeout_secs = 120,
+            .timeout_secs = 300,
         }, StreamCtx.onChunk, &ctx);
 
         // Hoàn thiện tool calls
